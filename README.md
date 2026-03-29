@@ -215,50 +215,67 @@ npx tsx scripts/embed-notes.ts
 ## Project Structure
 
 ```
-src/
-  app/
-    (auth)/              Login page (no public signup)
-    (dashboard)/         Dashboard, Clients, Service Log, Search, Calendar, Admin, Audit
-    api/                 REST APIs + AI routes + notifications
-    pricing/             Pricing page
-  components/
-    ui/                  shadcn/ui components, CSV import/export, print button
-    layout/              Sidebar (role-aware), Header, Appointment Reminder
-    ai/                  Photo Intake, Semantic Search, Voice Note Recorder, Handoff Summary
-    landing/             Landing page, Pricing page components
-  lib/
-    supabase/            Database clients (browser + server)
-    ai/                  Claude + Gemini AI utilities, prompt loading, embeddings
-    audit.ts             PII-safe audit logging utility
-  types/                 TypeScript types (database, supabase, speech recognition)
-scripts/
-    seed.ts              Demo data seeder (12 clients, 40 service entries)
-    embed-notes.ts       Batch embedding generator for semantic search
-supabase/
-  migrations/            SQL schema, RLS policies, functions, seed data
-middleware.ts            Auth guards, public route handling, session refresh
+CareBase/
+├── src/
+│   ├── app/
+│   │   ├── (auth)/login/          # Login page (no public signup)
+│   │   ├── (dashboard)/
+│   │   │   ├── dashboard/         # Stats, charts, activity feed
+│   │   │   ├── clients/           # Client list, profile, edit
+│   │   │   ├── service/new/       # Service entry logging
+│   │   │   ├── search/            # AI semantic search
+│   │   │   ├── calendar/          # Weekly appointment calendar
+│   │   │   ├── admin/             # Admin settings panel
+│   │   │   └── audit/             # Audit log viewer
+│   │   ├── api/
+│   │   │   ├── ai/                # photo-intake, structure-note, embed, search, handoff-summary
+│   │   │   ├── clients/           # CRUD + CSV import
+│   │   │   ├── service-entries/   # CRUD
+│   │   │   ├── appointments/      # CRUD + status updates
+│   │   │   ├── audit-log/         # Admin-only audit log API
+│   │   │   └── notifications/     # Email notifications via Resend
+│   │   └── pricing/               # Pricing page
+│   ├── components/
+│   │   ├── ai/                    # VoiceNoteRecorder, SemanticSearch, PhotoIntake
+│   │   ├── landing/               # LandingPage, PricingPage
+│   │   ├── layout/                # Sidebar, Header, AppointmentReminder
+│   │   └── ui/                    # shadcn/ui, ImportCSVButton, PrintButton
+│   ├── lib/
+│   │   ├── supabase/              # Database clients (browser + server)
+│   │   ├── ai/                    # Claude + Gemini utilities, prompt loader
+│   │   └── audit.ts               # PII-safe audit logging
+│   └── types/                     # database.ts, supabase.ts, speech-recognition.d.ts
+├── scripts/
+│   ├── seed.ts                    # Demo data (12 clients, 40 service entries)
+│   └── embed-notes.ts             # Batch embedding generator
+├── supabase/migrations/
+│   ├── 001_initial_schema.sql     # Tables, RLS, functions, seed prompts
+│   ├── 002_audit_log_and_gemini.sql
+│   └── 003_appointments.sql
+└── middleware.ts                   # Auth guards, session refresh, route protection
 ```
 
 ---
 
 ## Security & Privacy
 
-- **Authentication**: Supabase Auth with login-only access (no public signup). Users are admin-created.
-- **Authorization**: Row-Level Security (RLS) policies on all tables. Middleware guards all protected routes.
-- **Role Enforcement**: Dual fallback -- queries `app_users` table first, falls back to `user.user_metadata.role`.
-- **Audit Trail**: Every action logged with timestamp and user ID. PII fields (name, email, phone, address, notes) are never stored in audit logs.
-- **AI Privacy**: Each AI call scoped to single client. No cross-client data leakage. Image inputs are ephemeral.
+- **Authentication** -- Supabase Auth with login-only access (no public signup). Users are admin-created.
+- **Authorization** -- Row-Level Security (RLS) policies on all tables. Middleware guards all protected routes.
+- **Role Enforcement** -- Dual fallback: queries `app_users` table first, falls back to `user.user_metadata.role`.
+- **Audit Trail** -- Every action logged with timestamp and user ID. PII fields (name, email, phone, address, notes) are never stored in audit logs.
+- **AI Privacy** -- Each AI call scoped to single client. No cross-client data leakage. Image inputs are ephemeral.
 
 ---
 
 ## License
 
-MIT
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+
+You are free to use, modify, and distribute this software. See the `LICENSE` file for details.
 
 ---
 
 <p align="center">
-  <strong>Built with care at WiCS x Opportunity Hack 2026</strong><br/>
-  Arizona State University | March 28--29, 2026<br/><br/>
-  Team A-Train
+  <sub>Built with care at <strong>WiCS x Opportunity Hack 2026</strong> | Arizona State University | March 28--29, 2026</sub><br/>
+  <sub><strong>Team A-Train</strong> -- Nirmalraju Kangeyan & Neric Joel Arul Joel Paulraj</sub>
 </p>

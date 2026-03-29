@@ -10,26 +10,63 @@
 <h1 align="center">CareBase</h1>
 
 <p align="center">
-  <strong>AI-Native Nonprofit Client & Case Management Platform</strong>
+  <strong>AI-Native Nonprofit Client &amp; Case Management Platform</strong>
 </p>
 
 <p align="center">
   Open-source, AI-powered case management built specifically for food banks, clothing programs, and social services.<br/>
-  Built for <strong>ICM Food & Clothing Bank</strong>.
+  Built for <strong>ICM Food &amp; Clothing Bank</strong> at WiCS x Opportunity Hack @ ASU 2026.
 </p>
 
 <p align="center">
   <a href="https://carebase-murex.vercel.app"><strong>Live Demo</strong></a> &nbsp;·&nbsp;
+  <a href="https://www.youtube.com/watch?v=YtwZh96U1F8"><strong>Demo Video</strong></a> &nbsp;·&nbsp;
   <a href="#demo-credentials"><strong>Demo Login</strong></a> &nbsp;·&nbsp;
-  <a href="#features"><strong>Features</strong></a> &nbsp;·&nbsp;
-  <a href="#ai-architecture"><strong>AI Architecture</strong></a>
+  <a href="#features"><strong>Features</strong></a>
 </p>
 
 ---
 
-## Live Demo
+## Team
 
-**[https://carebase-murex.vercel.app](https://carebase-murex.vercel.app)**
+**Team Name:** A-Train
+
+**Members:**
+- Nirmalraju Kangeyan
+- Neric Joel Arul Joel Paulraj
+
+**Slack Channel:** [#C0APDJC9NLD](https://app.slack.com/client/T1Q7936BH/C0APDJC9NLD)
+
+**Hackathon:** WiCS x Opportunity Hack @ ASU | March 28--29, 2026
+
+---
+
+## Problem Statement
+
+Nonprofits like ICM Food & Clothing Bank serve hundreds of clients each month — tracking food box pickups, clothing assistance, benefits referrals, and emergency aid. Today, most organizations still rely on paper forms, spreadsheets, or outdated case management software that costs $20–150 per staff member per month and offers no AI assistance.
+
+Case managers waste hours on documentation, struggle to find client history during handoffs, and cannot detect patterns across their caseload. When a client's situation changes — job loss, housing instability, medical emergency — staff have no fast way to surface that context.
+
+**CareBase solves this** with an affordable, AI-native platform that lets nonprofits:
+- Register clients in seconds (including via photo of a paper form)
+- Log services with structured, searchable notes
+- Generate instant AI handoff summaries for shift changes
+- Search case notes with natural language ("clients facing housing instability")
+- Schedule appointments with automatic email notifications
+- Track everything with a privacy-safe audit trail
+
+Priced per organization (not per user), so onboarding a new volunteer never costs more.
+
+---
+
+## Links
+
+| | Link |
+|---|---|
+| **Live Demo** | https://carebase-murex.vercel.app |
+| **Demo Video** | https://www.youtube.com/watch?v=YtwZh96U1F8 |
+| **GitHub Repo** | https://github.com/2026-ASU-WiCS-Opportunity-Hack/26-a-train |
+| **Slack Channel** | https://app.slack.com/client/T1Q7936BH/C0APDJC9NLD |
 
 ---
 
@@ -42,16 +79,6 @@
 
 > **Admin** has full access: client CRUD, CSV import, audit log, admin settings, delete operations.
 > **Staff** has standard access: view clients, log services, use AI features, view dashboard.
-
----
-
-## Hackathon
-
-Built at **WiCS x Opportunity Hack @ ASU** | March 28--29, 2026
-
-**Team A-Train**
-- Nirmalraju Kangeyan
-- Neric Joel Arul Joel Paulraj
 
 ---
 
@@ -72,7 +99,7 @@ Built at **WiCS x Opportunity Hack @ ASU** | March 28--29, 2026
 
 ## Features
 
-### Core Platform (P0)
+### Core Platform
 
 | Feature | Description |
 |---------|-------------|
@@ -85,16 +112,16 @@ Built at **WiCS x Opportunity Hack @ ASU** | March 28--29, 2026
 | **CSV Import/Export** | Bulk import clients from CSV files (admin-only), export client data |
 | **Dashboard** | Real-time stats, service type breakdown charts, visit trends over time, upcoming appointments, recent activity |
 
-### AI Features (P1)
+### AI Features
 
 | Feature | How It Works |
 |---------|-------------|
 | **Photo-to-Intake** | Snap a photo of a paper intake form → Claude Vision extracts structured fields → staff reviews and edits before saving |
 | **Semantic Search** | Natural language queries across all case notes → Gemini embeddings + pgvector cosine similarity → ranked results |
 | **AI Handoff Summary** | One-click generation of comprehensive client summary from all case notes → designed for shift changes, referrals, case transfers |
-| **Voice-to-Structured Notes** | Speak session notes via Web Speech API (or type manually) → Claude structures into professional case notes with service type, action items, risk flags, mood assessment |
+| **Voice-to-Structured Notes** | Speak session notes via Web Speech API → Claude structures into professional case notes with service type, action items, risk flags, mood assessment |
 
-### Scheduling & Notifications (P2)
+### Scheduling & Notifications
 
 | Feature | Description |
 |---------|-------------|
@@ -107,38 +134,13 @@ Built at **WiCS x Opportunity Hack @ ASU** | March 28--29, 2026
 
 | Feature | Description |
 |---------|-------------|
-| **Audit Log** | Every create/update/delete action logged with timestamp and user. PII-safe -- no client names, emails, phone numbers, or note content logged |
+| **Audit Log** | Every create/update/delete action logged with timestamp and user. PII-safe -- no client names, emails, or note content logged |
 | **Admin Panel** | View system prompts, custom field configuration |
-| **Print Support** | Print-optimized CSS for dashboard and client profiles |
 | **Configurable AI Prompts** | System prompts stored in database, editable without code changes |
 
 ---
 
-## AI Architecture
-
-All AI functionality follows four strict principles:
-
-1. **Server-side only** -- Every LLM and embedding call goes through `/api/ai/` server routes. No AI API keys are exposed to the client.
-
-2. **Human-in-the-loop** -- All AI output is treated as a draft. Photo-to-Intake populates form fields for review. Handoff Summaries display with an "AI Draft" badge. Nothing auto-saves.
-
-3. **Privacy by design** -- No cross-client PII in context windows. Each AI call operates on a single client's data only. Image inputs are ephemeral and never stored.
-
-4. **Customizable prompts** -- System prompts are stored in the `prompts` database table, not hardcoded. Admins can iterate on prompt engineering without code changes.
-
-### AI Route Map
-
-```
-POST /api/ai/photo-intake      Image → Claude Vision → structured intake fields
-POST /api/ai/structure-note    Voice transcript → Claude → structured case note with service type, action items, risk flags
-POST /api/ai/embed             Service note text → Gemini → 768-dim vector stored in DB
-POST /api/ai/search            Natural language query → Gemini embedding → pgvector cosine similarity search
-POST /api/ai/handoff-summary   Client ID → all notes → Claude → narrative summary with background, needs, risks
-```
-
----
-
-## Quick Start
+## How to Run Locally
 
 ### Prerequisites
 
@@ -150,8 +152,8 @@ POST /api/ai/handoff-summary   Client ID → all notes → Claude → narrative 
 ### Installation
 
 ```bash
-git clone https://github.com/neric-joel/CareBase.git
-cd CareBase
+git clone https://github.com/2026-ASU-WiCS-Opportunity-Hack/26-a-train.git
+cd 26-a-train
 npm install
 ```
 
@@ -178,20 +180,20 @@ NOTIFICATION_EMAIL=your-email@example.com
 
 ### Database Setup
 
-Run the migration SQL files in your Supabase SQL Editor (in order):
+Run the migration SQL files in your Supabase SQL Editor in order:
 
-1. `supabase/migrations/001_initial_schema.sql` -- Tables, RLS policies, functions, seed prompts
-2. `supabase/migrations/002_audit_log_and_gemini.sql` -- Audit log table + Gemini 768-dim vector support
-3. `supabase/migrations/003_appointments.sql` -- Appointments table and scheduling
+1. `supabase/migrations/001_initial_schema.sql` — Tables, RLS policies, functions, seed prompts
+2. `supabase/migrations/002_audit_log_and_gemini.sql` — Audit log table + Gemini 768-dim vector support
+3. `supabase/migrations/003_appointments.sql` — Appointments table and scheduling
 
 ### Seed & Run
 
 ```bash
 npm run seed          # Seeds 12 demo clients + 40 service entries
-npm run dev           # Start development server
+npm run dev           # Start development server at http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and sign in with the demo credentials above.
+Sign in with the demo credentials above.
 
 ### Generate Embeddings (for Semantic Search)
 
@@ -234,22 +236,22 @@ CareBase/
 │   │   │   ├── appointments/      # CRUD + status updates
 │   │   │   ├── audit-log/         # Admin-only audit log API
 │   │   │   └── notifications/     # Email notifications via Resend
-│   │   └── pricing/               # Pricing page
+│   │   └── pricing/               # Public pricing page
 │   ├── components/
-│   │   ├── ai/                    # VoiceNoteRecorder, SemanticSearch, PhotoIntake
+│   │   ├── ai/                    # VoiceNoteRecorder, SemanticSearch, PhotoIntake, HandoffSummary
 │   │   ├── landing/               # LandingPage, PricingPage
 │   │   ├── layout/                # Sidebar, Header, AppointmentReminder
-│   │   └── ui/                    # shadcn/ui, ImportCSVButton, PrintButton
+│   │   └── ui/                    # shadcn/ui components, ImportCSVButton, PrintButton
 │   ├── lib/
 │   │   ├── supabase/              # Database clients (browser + server)
 │   │   ├── ai/                    # Claude + Gemini utilities, prompt loader
 │   │   └── audit.ts               # PII-safe audit logging
-│   └── types/                     # database.ts, supabase.ts, speech-recognition.d.ts
+│   └── types/                     # database.ts, supabase.ts
 ├── scripts/
 │   ├── seed.ts                    # Demo data (12 clients, 40 service entries)
 │   └── embed-notes.ts             # Batch embedding generator
 ├── supabase/migrations/
-│   ├── 001_initial_schema.sql     # Tables, RLS, functions, seed prompts
+│   ├── 001_initial_schema.sql
 │   ├── 002_audit_log_and_gemini.sql
 │   └── 003_appointments.sql
 └── middleware.ts                   # Auth guards, session refresh, route protection
@@ -257,25 +259,15 @@ CareBase/
 
 ---
 
-## Security & Privacy
-
-- **Authentication** -- Supabase Auth with login-only access (no public signup). Users are admin-created.
-- **Authorization** -- Row-Level Security (RLS) policies on all tables. Middleware guards all protected routes.
-- **Role Enforcement** -- Dual fallback: queries `app_users` table first, falls back to `user.user_metadata.role`.
-- **Audit Trail** -- Every action logged with timestamp and user ID. PII fields (name, email, phone, address, notes) are never stored in audit logs.
-- **AI Privacy** -- Each AI call scoped to single client. No cross-client data leakage. Image inputs are ephemeral.
-
----
-
 ## License
 
-This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+This project is licensed under the [MIT License](LICENSE).
 
-You are free to use, modify, and distribute this software. See the `LICENSE` file for details.
+You are free to use, modify, and distribute this software.
 
 ---
 
 <p align="center">
   <sub>Built with care at <strong>WiCS x Opportunity Hack 2026</strong> | Arizona State University | March 28--29, 2026</sub><br/>
-  <sub><strong>Team A-Train</strong> -- Nirmalraju Kangeyan & Neric Joel Arul Joel Paulraj</sub>
+  <sub><strong>Team A-Train</strong> — Nirmalraju Kangeyan &amp; Neric Joel Arul Joel Paulraj</sub>
 </p>

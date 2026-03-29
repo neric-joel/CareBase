@@ -80,7 +80,7 @@ export default function NewClientPage() {
       // Map any extracted custom fields into our dynamic array format
       if (fields.custom_fields && typeof fields.custom_fields === 'object') {
         const dynamicFieldsArray = Object.entries(fields.custom_fields)
-          .filter(([_, v]) => v !== null && v !== '')
+          .filter(([, v]) => v !== null && v !== '')
           .map(([k, v]) => ({ key: k, value: String(v) }));
         
         setValue('custom_fields', dynamicFieldsArray);

@@ -43,7 +43,7 @@ export default function EditClientForm({ client }: { client: DbClient }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Convert the JSON object from the database back into the array format for the form
-  const initialCustomFields = [];
+  const initialCustomFields: { key: string; value: string }[] = [];
   if (client.custom_fields && typeof client.custom_fields === 'object') {
     Object.entries(client.custom_fields).forEach(([k, v]) => {
       if (v !== null && v !== undefined && v !== '') {
@@ -87,7 +87,7 @@ export default function EditClientForm({ client }: { client: DbClient }) {
       
       if (fields.custom_fields && typeof fields.custom_fields === 'object') {
         const dynamicFieldsArray = Object.entries(fields.custom_fields)
-          .filter(([_, v]) => v !== null && v !== '')
+          .filter(([, v]) => v !== null && v !== '')
           .map(([k, v]) => ({ key: k, value: String(v) }));
         setValue('custom_fields', dynamicFieldsArray);
       }

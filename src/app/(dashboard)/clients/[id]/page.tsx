@@ -1,18 +1,26 @@
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+// app/clients/[id]/page.tsx
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import type { ClientCustomFields } from '@/types/database';
-import { HandoffSummaryCard } from '@/components/ai/handoff-summary-card';
-import { ArrowLeft } from 'lucide-react';
+} from "@/components/ui/card";
+import { HandoffSummaryCard } from "@/components/ai/handoff-summary-card";
+import { ArrowLeft } from "lucide-react";
+
+// Helper to format keys like "car_insurance" or "household_size" into "Car Insurance"
+function formatFieldName(key: string) {
+  return key
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 export default async function ClientProfilePage({
   params,
@@ -22,9 +30,9 @@ export default async function ClientProfilePage({
   const supabase = await createClient();
 
   const { data: client, error } = await supabase
-    .from('clients')
-    .select('*')
-    .eq('id', params.id)
+    .from("clients")
+    .select("*")
+    .eq("id", params.id)
     .single();
 
   if (error || !client) {
@@ -32,31 +40,32 @@ export default async function ClientProfilePage({
   }
 
   const { data: entries } = await supabase
-    .from('service_entries')
-    .select('*')
-    .eq('client_id', params.id)
-    .order('service_date', { ascending: false });
+    .from("service_entries")
+    .select("*")
+    .eq("client_id", params.id)
+    .order("service_date", { ascending: false });
 
   const staffIds = [
     ...new Set(
       (entries ?? [])
         .map((e) => e.staff_id)
-        .filter((id): id is string => id !== null && id !== undefined)
+        .filter((id): id is string => id !== null && id !== undefined),
     ),
   ];
 
   let staffMap: Record<string, string> = {};
   if (staffIds.length > 0) {
     const { data: staffUsers } = await supabase
-      .from('users')
-      .select('id, full_name')
-      .in('id', staffIds);
+      .from("users")
+      .select("id, full_name")
+      .in("id", staffIds);
     staffMap = Object.fromEntries(
-      (staffUsers ?? []).map((u) => [u.id, u.full_name])
+      (staffUsers ?? []).map((u) => [u.id, u.full_name]),
     );
   }
 
-  const customFields = (client.custom_fields ?? {}) as ClientCustomFields;
+  // Treat customFields as a generic key-value dictionary
+  const customFields = (client.custom_fields ?? {}) as Record<string, unknown>;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -70,16 +79,26 @@ export default async function ClientProfilePage({
 
       <Card>
         <CardHeader>
-          <div className="flex items-start justify-between gap-4">
+          {/* UPDATED: Changed items-start to sm:items-center and wrapped buttons */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <CardTitle className="text-xl">
                 {client.first_name} {client.last_name}
               </CardTitle>
               <CardDescription>Client ID: {client.client_id}</CardDescription>
             </div>
-            <Link href={`/service/new?client_id=${client.id}`}>
-              <Button>Log New Service</Button>
-            </Link>
+            
+            {/* UPDATED: Grouped buttons in a flex container */}
+            <div className="flex items-center gap-2">
+              <Link href={`/clients/${client.id}/edit`}>
+                <Button variant="outline">
+                  Edit
+                </Button>
+              </Link>
+              <Link href={`/service/new?client_id=${client.id}`}>
+                <Button>Log New Service</Button>
+              </Link>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -108,26 +127,22 @@ export default async function ClientProfilePage({
                 {client.address}
               </div>
             )}
-            {customFields.household_size != null && (
-              <div>
-                <span className="text-muted-foreground">Household Size: </span>
-                {customFields.household_size}
-              </div>
-            )}
-            {customFields.dietary_restrictions && (
-              <div>
-                <span className="text-muted-foreground">
-                  Dietary Restrictions:{' '}
-                </span>
-                {customFields.dietary_restrictions}
-              </div>
-            )}
-            {customFields.language_preference && (
-              <div>
-                <span className="text-muted-foreground">Language: </span>
-                {customFields.language_preference}
-              </div>
-            )}
+
+            {/* DYNAMIC CUSTOM FIELDS RENDERER */}
+            {Object.entries(customFields).map(([key, value]) => {
+              // Only render if the value actually exists
+              if (value === null || value === undefined || value === "")
+                return null;
+
+              return (
+                <div key={key}>
+                  <span className="text-muted-foreground">
+                    {formatFieldName(key)}:{" "}
+                  </span>
+                  {String(value)}
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

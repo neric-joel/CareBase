@@ -1,3 +1,4 @@
+// app/api/clients/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
@@ -14,14 +15,8 @@ const createClientSchema = z.object({
   phone: z.string().max(20).optional().nullable(),
   email: z.string().email().optional().nullable(),
   address: z.string().max(500).optional().nullable(),
-  custom_fields: z
-    .object({
-      household_size: z.number().int().positive().optional().nullable(),
-      dietary_restrictions: z.string().max(500).optional().nullable(),
-      language_preference: z.string().max(100).optional().nullable(),
-    })
-    .optional()
-    .default({}),
+  // UPDATE: Accept any key-value record for dynamic custom fields
+  custom_fields: z.record(z.any()).optional().default({}),
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

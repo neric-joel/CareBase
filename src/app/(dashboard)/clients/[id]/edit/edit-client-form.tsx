@@ -1,4 +1,3 @@
-// app/clients/new/page.tsx
 'use client';
 
 import { useCallback, useState } from 'react';
@@ -7,7 +6,7 @@ import Link from 'next/link';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react'; // Added Plus and Trash2 icons
+import { ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,7 +19,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { PhotoIntakeButton } from '@/components/ai/photo-intake-button';
-import type { PhotoIntakeResult } from '@/types/database';
+import type { PhotoIntakeResult, DbClient } from '@/types/database';
 
 const clientSchema = z.object({
   first_name: z.string().min(1, 'First name is required'),
@@ -29,7 +28,6 @@ const clientSchema = z.object({
   phone: z.string().optional(),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   address: z.string().optional(),
-  // UPDATE: Form handles custom fields as an array of objects to map to UI inputs
   custom_fields: z.array(
     z.object({
       key: z.string().min(1, 'Field name is required'),
@@ -40,29 +38,39 @@ const clientSchema = z.object({
 
 type ClientFormValues = z.infer<typeof clientSchema>;
 
-interface CreateClientResponse {
-  data?: { client: { id: string } };
-  error?: string;
-}
-
-export default function NewClientPage() {
+export default function EditClientForm({ client }: { client: DbClient }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Convert the JSON object from the database back into the array format for the form
+  const initialCustomFields = [];
+  if (client.custom_fields && typeof client.custom_fields === 'object') {
+    Object.entries(client.custom_fields).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') {
+        initialCustomFields.push({ key: k, value: String(v) });
+      }
+    });
+  }
+
   const {
     register,
-    control, // Added control for useFieldArray
+    control,
     handleSubmit,
     formState: { errors, isSubmitting },
     setValue,
   } = useForm<ClientFormValues>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
-      custom_fields: [],
+      first_name: client.first_name,
+      last_name: client.last_name,
+      date_of_birth: client.date_of_birth || '',
+      phone: client.phone || '',
+      email: client.email || '',
+      address: client.address || '',
+      custom_fields: initialCustomFields,
     }
   });
 
-  // Hook to manage dynamic arrays of inputs
   const { fields: customFields, append, remove } = useFieldArray({
     control,
     name: 'custom_fields',
@@ -77,12 +85,10 @@ export default function NewClientPage() {
       if (fields.email) setValue('email', fields.email);
       if (fields.address) setValue('address', fields.address);
       
-      // Map any extracted custom fields into our dynamic array format
       if (fields.custom_fields && typeof fields.custom_fields === 'object') {
         const dynamicFieldsArray = Object.entries(fields.custom_fields)
           .filter(([_, v]) => v !== null && v !== '')
           .map(([k, v]) => ({ key: k, value: String(v) }));
-        
         setValue('custom_fields', dynamicFieldsArray);
       }
     },
@@ -92,11 +98,9 @@ export default function NewClientPage() {
   async function onSubmit(values: ClientFormValues) {
     setSubmitError(null);
 
-    // Transform array of {key, value} back into a JSON Object
     const customFieldsRecord: Record<string, string> = {};
     if (values.custom_fields) {
       values.custom_fields.forEach(field => {
-        // Format the key to snake_case or keep as is. Let's keep it exactly as user types, or trim it.
         const cleanKey = field.key.trim().toLowerCase().replace(/\s+/g, '_');
         customFieldsRecord[cleanKey] = field.value;
       });
@@ -109,23 +113,25 @@ export default function NewClientPage() {
       phone: values.phone || null,
       email: values.email || null,
       address: values.address || null,
-      custom_fields: customFieldsRecord, // Now an open-ended object
+      custom_fields: customFieldsRecord,
     };
 
     try {
-      const res = await fetch('/api/clients', {
-        method: 'POST',
+      // Use PATCH to update the existing client
+      const res = await fetch(`/api/clients/${client.id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
-      const result = await res.json() as CreateClientResponse;
+      const result = await res.json();
 
       if (!res.ok) {
-        throw new Error(result.error ?? 'Failed to create client');
+        throw new Error(result.error ?? 'Failed to update client');
       }
 
-      router.push(`/clients/${result.data?.client.id}`);
+      router.push(`/clients/${client.id}`);
+      router.refresh(); // Refresh to update the server cache on the profile page
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'An unexpected error occurred');
     }
@@ -134,14 +140,14 @@ export default function NewClientPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <Link
-        href="/clients"
+        href={`/clients/${client.id}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Back to Clients
+        Back to Profile
       </Link>
 
-      <h1 className="text-2xl font-bold">Register New Client</h1>
+      <h1 className="text-2xl font-bold">Edit Client</h1>
 
       <Card>
         <CardHeader>
@@ -158,103 +164,44 @@ export default function NewClientPage() {
                 <Label htmlFor="first_name">
                   First Name <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="first_name"
-                  type="text"
-                  autoComplete="given-name"
-                  {...register('first_name')}
-                />
-                {errors.first_name && (
-                  <p className="text-destructive text-sm">
-                    {errors.first_name.message}
-                  </p>
-                )}
+                <Input id="first_name" type="text" {...register('first_name')} />
+                {errors.first_name && <p className="text-destructive text-sm">{errors.first_name.message}</p>}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="last_name">
                   Last Name <span className="text-destructive">*</span>
                 </Label>
-                <Input
-                  id="last_name"
-                  type="text"
-                  autoComplete="family-name"
-                  {...register('last_name')}
-                />
-                {errors.last_name && (
-                  <p className="text-destructive text-sm">
-                    {errors.last_name.message}
-                  </p>
-                )}
+                <Input id="last_name" type="text" {...register('last_name')} />
+                {errors.last_name && <p className="text-destructive text-sm">{errors.last_name.message}</p>}
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="date_of_birth">Date of Birth</Label>
-              <Input
-                id="date_of_birth"
-                type="date"
-                {...register('date_of_birth')}
-              />
-              {errors.date_of_birth && (
-                <p className="text-destructive text-sm">
-                  {errors.date_of_birth.message}
-                </p>
-              )}
+              <Input id="date_of_birth" type="date" {...register('date_of_birth')} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
-                autoComplete="tel"
-                placeholder="(555) 000-0000"
-                {...register('phone')}
-              />
-              {errors.phone && (
-                <p className="text-destructive text-sm">{errors.phone.message}</p>
-              )}
+              <Input id="phone" type="tel" {...register('phone')} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="client@example.com"
-                {...register('email')}
-              />
-              {errors.email && (
-                <p className="text-destructive text-sm">{errors.email.message}</p>
-              )}
+              <Input id="email" type="email" {...register('email')} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="address">Address</Label>
-              <Textarea
-                id="address"
-                rows={2}
-                placeholder="123 Main St, Phoenix, AZ 85001"
-                {...register('address')}
-              />
-              {errors.address && (
-                <p className="text-destructive text-sm">{errors.address.message}</p>
-              )}
+              <Textarea id="address" rows={2} {...register('address')} />
             </div>
 
             <Separator />
 
-            {/* DYNAMIC CUSTOM FIELDS SECTION */}
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">Additional Custom Fields</p>
-              <Button 
-                type="button" 
-                variant="outline" 
-                size="sm"
-                onClick={() => append({ key: '', value: '' })}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={() => append({ key: '', value: '' })}>
                 <Plus className="h-4 w-4 mr-1" /> Add Field
               </Button>
             </div>
@@ -263,59 +210,29 @@ export default function NewClientPage() {
               {customFields.map((field, index) => (
                 <div key={field.id} className="flex gap-2 items-start">
                   <div className="space-y-1 flex-1">
-                    <Input
-                      placeholder="Field Name (e.g. Household Size)"
-                      {...register(`custom_fields.${index}.key` as const)}
-                    />
-                    {errors.custom_fields?.[index]?.key && (
-                      <p className="text-destructive text-xs">{errors.custom_fields[index]?.key?.message}</p>
-                    )}
+                    <Input placeholder="Field Name" {...register(`custom_fields.${index}.key` as const)} />
+                    {errors.custom_fields?.[index]?.key && <p className="text-destructive text-xs">{errors.custom_fields[index]?.key?.message}</p>}
                   </div>
                   <div className="space-y-1 flex-1">
-                    <Input
-                      placeholder="Value"
-                      {...register(`custom_fields.${index}.value` as const)}
-                    />
-                    {errors.custom_fields?.[index]?.value && (
-                      <p className="text-destructive text-xs">{errors.custom_fields[index]?.value?.message}</p>
-                    )}
+                    <Input placeholder="Value" {...register(`custom_fields.${index}.value` as const)} />
+                    {errors.custom_fields?.[index]?.value && <p className="text-destructive text-xs">{errors.custom_fields[index]?.value?.message}</p>}
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive shrink-0"
-                    onClick={() => remove(index)}
-                  >
+                  <Button type="button" variant="ghost" size="icon" className="text-destructive shrink-0" onClick={() => remove(index)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
-              {customFields.length === 0 && (
-                <p className="text-sm text-muted-foreground italic">No custom fields added yet.</p>
-              )}
+              {customFields.length === 0 && <p className="text-sm text-muted-foreground italic">No custom fields added yet.</p>}
             </div>
-            {/* END DYNAMIC CUSTOM FIELDS */}
 
-            {submitError && (
-              <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {submitError}
-              </div>
-            )}
+            {submitError && <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">{submitError}</div>}
 
             <Button type="submit" className="w-full mt-6" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Registering…
-                </>
-              ) : (
-                'Register Client'
-              )}
+              {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating…</> : 'Update Client'}
             </Button>
           </form>
         </CardContent>
       </Card>
     </div>
-  );
+  );    
 }

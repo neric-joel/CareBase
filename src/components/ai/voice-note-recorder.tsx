@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { Mic, MicOff, Loader2, Sparkles, Type } from 'lucide-react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Mic, MicOff, Loader2, Sparkles, Type, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,19 +21,28 @@ interface VoiceNoteRecorderProps {
   onStructured: (note: StructuredNote) => void;
 }
 
+type InputMode = 'idle' | 'type' | 'record';
+
 export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [consentGiven, setConsentGiven] = useState(false);
-  const [showManualInput, setShowManualInput] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>('idle');
   const [manualText, setManualText] = useState('');
+  const [micSupported, setMicSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const fullTranscriptRef = useRef('');
 
-  const isSupported = typeof window !== 'undefined' &&
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+  // Check mic support on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hasSpeechAPI = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
+      const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
+      setMicSupported(hasSpeechAPI && isSecure);
+    }
+  }, []);
 
   const processTranscript = useCallback(async (text: string) => {
     if (!text || text.trim().length < 10) {
@@ -60,8 +69,9 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
       }
 
       onStructured(json.data);
-      setShowManualInput(false);
+      setInputMode('idle');
       setManualText('');
+      setTranscript('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process note');
     } finally {
@@ -69,52 +79,87 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
     }
   }, [clientName, onStructured]);
 
-  const startRecording = useCallback(() => {
+  const startRecording = useCallback(async () => {
     setError(null);
     setTranscript('');
     fullTranscriptRef.current = '';
 
-    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionCtor) {
-      setError('Speech recognition not available. Use the text input instead.');
-      setShowManualInput(true);
+    // Check microphone permission first
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Permission granted — stop the test stream
+      stream.getTracks().forEach(track => track.stop());
+    } catch {
+      setError('Microphone access denied. Please allow microphone permission in your browser, or use the Type option below.');
+      setInputMode('type');
       return;
     }
-    const recognition = new SpeechRecognitionCtor();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = '';
-      let final = '';
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          final += result[0].transcript + ' ';
-        } else {
-          interim += result[0].transcript;
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      setError('Speech recognition is not supported in this browser. Please use Chrome or Edge, or type your notes below.');
+      setInputMode('type');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let interim = '';
+        let final = '';
+        for (let i = 0; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            final += result[0].transcript + ' ';
+          } else {
+            interim += result[0].transcript;
+          }
         }
-      }
-      fullTranscriptRef.current = final;
-      setTranscript(final + interim);
-    };
+        fullTranscriptRef.current = final;
+        setTranscript(final + interim);
+      };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error !== 'aborted') {
-        setError(`Mic unavailable (${event.error}). You can type your notes below instead.`);
-        setShowManualInput(true);
-      }
-      setIsRecording(false);
-    };
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'aborted') return;
 
-    recognition.onend = () => {
-      setIsRecording(false);
-    };
+        let message = '';
+        switch (event.error) {
+          case 'network':
+            message = 'Network error — speech recognition requires an internet connection. Please use the Type option instead.';
+            break;
+          case 'not-allowed':
+            message = 'Microphone permission was denied. Please allow microphone access in your browser settings, or use the Type option.';
+            break;
+          case 'no-speech':
+            message = 'No speech detected. Please try again or use the Type option.';
+            break;
+          case 'audio-capture':
+            message = 'No microphone found. Please connect a microphone or use the Type option.';
+            break;
+          default:
+            message = `Speech recognition error (${event.error}). Please use the Type option instead.`;
+        }
+        setError(message);
+        setInputMode('type');
+        setIsRecording(false);
+      };
 
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsRecording(true);
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+      setIsRecording(true);
+      setInputMode('record');
+    } catch {
+      setError('Failed to start speech recognition. Please use the Type option.');
+      setInputMode('type');
+    }
   }, []);
 
   const stopRecording = useCallback(async () => {
@@ -126,8 +171,10 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
 
     const finalTranscript = fullTranscriptRef.current.trim();
     if (!finalTranscript || finalTranscript.length < 10) {
-      setError('Recording too short. Try the text input instead.');
-      setShowManualInput(true);
+      setError('Recording too short. Try speaking more, or use the Type option.');
+      setInputMode('type');
+      // Pre-fill with whatever was captured
+      if (finalTranscript) setManualText(finalTranscript);
       return;
     }
 
@@ -143,7 +190,8 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
           <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">AI</Badge>
         </div>
         <p className="text-xs text-amber-700">
-          Dictate or type your session notes and AI will structure them into a professional case note.
+          Dictate or type your session notes and AI will structure them into a professional case note
+          with service type, action items, risk flags, and mood assessment.
           Audio is never stored — only the text is processed.
         </p>
         <Button
@@ -169,54 +217,54 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
           <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">AI</Badge>
         </div>
 
-        <div className="flex gap-1">
-          {!isRecording && !isProcessing && !showManualInput && isSupported && (
-            <Button
-              type="button"
-              size="sm"
-              onClick={startRecording}
-              className="bg-red-500 hover:bg-red-600 text-white"
-            >
-              <Mic className="mr-1 h-3 w-3" />
-              Record
-            </Button>
-          )}
-
-          {!isRecording && !isProcessing && !showManualInput && (
+        {inputMode === 'idle' && !isProcessing && (
+          <div className="flex gap-1">
             <Button
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => { setShowManualInput(true); setError(null); }}
+              onClick={() => { setInputMode('type'); setError(null); }}
               className="border-amber-300 text-amber-800 hover:bg-amber-100"
             >
               <Type className="mr-1 h-3 w-3" />
               Type
             </Button>
-          )}
+            {micSupported && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={startRecording}
+                className="bg-red-500 hover:bg-red-600 text-white"
+              >
+                <Mic className="mr-1 h-3 w-3" />
+                Record
+              </Button>
+            )}
+          </div>
+        )}
 
-          {isRecording && (
-            <Button
-              type="button"
-              size="sm"
-              onClick={stopRecording}
-              variant="outline"
-              className="border-red-300 text-red-700 hover:bg-red-50"
-            >
-              <MicOff className="mr-1 h-3 w-3" />
-              Stop & Process
-            </Button>
-          )}
+        {isRecording && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={stopRecording}
+            variant="outline"
+            className="border-red-300 text-red-700 hover:bg-red-50"
+          >
+            <MicOff className="mr-1 h-3 w-3" />
+            Stop & Process
+          </Button>
+        )}
 
-          {isProcessing && (
-            <Button type="button" size="sm" disabled>
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              Structuring…
-            </Button>
-          )}
-        </div>
+        {isProcessing && (
+          <Button type="button" size="sm" disabled>
+            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            Structuring...
+          </Button>
+        )}
       </div>
 
+      {/* Recording state */}
       {isRecording && (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -224,7 +272,7 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
             </span>
-            <span className="text-xs text-red-600 font-medium">Recording…</span>
+            <span className="text-xs text-red-600 font-medium">Recording... speak your session notes</span>
           </div>
           {transcript && (
             <p className="text-xs text-muted-foreground bg-white rounded p-2 max-h-24 overflow-y-auto">
@@ -234,14 +282,15 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
         </div>
       )}
 
-      {showManualInput && !isProcessing && (
+      {/* Manual text input */}
+      {inputMode === 'type' && !isProcessing && (
         <div className="space-y-2">
           <p className="text-xs text-amber-700">
-            Type or paste your raw session notes below. AI will structure them into a professional case note.
+            Type or paste your raw session notes. AI will structure them into a professional case note with service type, action items, risk flags, and mood assessment.
           </p>
           <Textarea
-            rows={3}
-            placeholder="e.g. Met with Maria today. She mentioned her husband got a new job at the warehouse. Kids are doing well in school. Still needs food box support for the next month. Diabetic diet items requested. Follow up in two weeks."
+            rows={4}
+            placeholder={"e.g. Met with Maria today. She mentioned her husband got a new job at the warehouse. Kids are doing well in school. Still needs food box support for the next month. Diabetic diet items requested. Follow up in two weeks."}
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
             className="text-sm bg-white"
@@ -261,7 +310,7 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
               type="button"
               size="sm"
               variant="ghost"
-              onClick={() => { setShowManualInput(false); setError(null); }}
+              onClick={() => { setInputMode('idle'); setError(null); setManualText(''); }}
               className="text-amber-700"
             >
               Cancel
@@ -270,8 +319,12 @@ export function VoiceNoteRecorder({ clientName, onStructured }: VoiceNoteRecorde
         </div>
       )}
 
+      {/* Error display */}
       {error && (
-        <p className="text-xs text-destructive">{error}</p>
+        <div className="flex items-start gap-2 text-xs text-destructive bg-red-50 rounded p-2">
+          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
       )}
     </div>
   );

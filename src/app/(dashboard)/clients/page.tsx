@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
-import { Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
+import { Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -12,10 +12,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ExportCsvButton } from "@/components/ui/export-csv-button";
-import type { DbClient } from "@/types/database";
+} from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ExportCsvButton } from '@/components/ui/export-csv-button';
+import { ImportCsvButton } from '@/components/ui/import-csv-button';
+import { createClient } from '@/lib/supabase/client';
+import type { DbClient } from '@/types/database';
 
 const PAGE_LIMIT = 20;
 
@@ -30,10 +32,26 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<DbClient[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function fetchRole() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('app_users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (data?.role === 'admin' || user.user_metadata?.role === 'admin') setIsAdmin(true);
+    }
+    fetchRole();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -51,20 +69,18 @@ export default function ClientsPage() {
         page: String(page),
         limit: String(PAGE_LIMIT),
       });
-      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (debouncedSearch) params.set('search', debouncedSearch);
 
       const res = await fetch(`/api/clients?${params.toString()}`);
       if (!res.ok) {
-        const body = (await res.json()) as { error?: string };
-        throw new Error(body.error ?? "Failed to load clients");
+        const body = await res.json() as { error?: string };
+        throw new Error(body.error ?? 'Failed to load clients');
       }
-      const json = (await res.json()) as ClientsApiResponse;
+      const json = await res.json() as ClientsApiResponse;
       setClients(json.data.clients);
       setTotal(json.data.total);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "An unexpected error occurred",
-      );
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -81,6 +97,7 @@ export default function ClientsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Clients</h1>
         <div className="flex gap-2">
+          {isAdmin && <ImportCsvButton onSuccess={() => fetchClients()} />}
           <ExportCsvButton />
           <Link href="/clients/new">
             <Button>New Client</Button>
@@ -141,20 +158,15 @@ export default function ClientsPage() {
                     {client.first_name} {client.last_name}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {client.phone ?? "—"}
+                    {client.phone ?? '—'}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {client.email ?? "—"}
+                    {client.email ?? '—'}
                   </TableCell>
                   <TableCell className="text-right">
                     <Link href={`/clients/${client.id}`}>
                       <Button variant="outline" size="sm">
                         View
-                      </Button>
-                    </Link>
-                    <Link href={`/clients/${client.id}/edit`}>
-                      <Button variant="outline" size="sm">
-                        Edit
                       </Button>
                     </Link>
                   </TableCell>

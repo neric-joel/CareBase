@@ -5,12 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Heart } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import {
   Card,
   CardContent,
@@ -29,11 +28,12 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const [authError, setAuthError] = useState<string | null>(null);
-  const [googleLoading, setGoogleLoading] = useState(false);
-
+  const [resetSent, setResetSent] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -41,35 +41,46 @@ export default function LoginPage() {
 
   async function onSubmit(values: LoginFormValues) {
     setAuthError(null);
+    setResetSent(false);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({
       email: values.email,
       password: values.password,
     });
     if (error) {
-      setAuthError(error.message);
+      setAuthError('Invalid email or password');
     } else {
-      router.push('/clients');
+      router.push('/dashboard');
     }
   }
 
-  async function handleGoogleSignIn() {
+  async function handleForgotPassword() {
+    const email = getValues('email');
+    if (!email || !z.string().email().safeParse(email).success) {
+      setAuthError('Enter your email address above, then click Forgot password');
+      return;
+    }
+    setResetting(true);
     setAuthError(null);
-    setGoogleLoading(true);
     const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/api/auth/callback`,
     });
-    setGoogleLoading(false);
+    setResetting(false);
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setResetSent(true);
+    }
   }
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center">CareBase</CardTitle>
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <Heart className="h-6 w-6 text-primary" aria-hidden="true" />
+          <CardTitle className="text-2xl font-bold">CareBase</CardTitle>
+        </div>
         <CardDescription className="text-center">
           Sign in to your account
         </CardDescription>
@@ -91,7 +102,17 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={resetting}
+                className="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+              >
+                {resetting ? 'Sending…' : 'Forgot password?'}
+              </button>
+            </div>
             <Input
               id="password"
               type="password"
@@ -107,6 +128,12 @@ export default function LoginPage() {
           {authError && (
             <div className="text-destructive text-sm rounded-md bg-destructive/10 px-3 py-2">
               {authError}
+            </div>
+          )}
+
+          {resetSent && (
+            <div className="text-sm rounded-md bg-green-50 text-green-800 border border-green-200 px-3 py-2">
+              Password reset email sent. Check your inbox.
             </div>
           )}
 
@@ -126,29 +153,9 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="relative my-4">
-          <Separator />
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-            or
-          </span>
-        </div>
-
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={handleGoogleSignIn}
-          disabled={googleLoading}
-          type="button"
-        >
-          {googleLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Redirecting…
-            </>
-          ) : (
-            'Continue with Google'
-          )}
-        </Button>
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          Accounts are created by your administrator.
+        </p>
       </CardContent>
     </Card>
   );

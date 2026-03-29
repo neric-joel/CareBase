@@ -92,3 +92,51 @@
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }
+
+/* Print styles for PDF export */
+@media print {
+  /* Hide sidebar and header */
+  aside,
+  nav,
+  header,
+  [data-sidebar],
+  [role="navigation"] {
+    display: none !important;
+  }
+
+  /* Make main content full width */
+  main,
+  [role="main"],
+  .main-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Remove fixed/sticky positioning */
+  * {
+    position: static !important;
+  }
+
+  /* Ensure all content is visible */
+  body,
+  html,
+  main,
+  [role="main"],
+  .main-content,
+  div {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  /* Avoid page breaks inside cards */
+  .card,
+  [data-card],
+  [class*="card"],
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

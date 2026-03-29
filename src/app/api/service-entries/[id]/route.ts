@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import type { DbServiceEntry, DbServiceEntryUpdate } from '@/types/database';
+import { logAudit } from '@/lib/audit';
 import { SERVICE_TYPES } from '@/types/database';
 
 const updateEntrySchema = z.object({
@@ -82,6 +83,13 @@ export async function PATCH(
       updated_at: new Date().toISOString(),
     };
 
+    // Fetch current entry before update for audit trail
+    const { data: existingEntry } = await supabase
+      .from('service_entries')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const { data: entry, error } = await supabase
       .from('service_entries')
       .update(updateData)
@@ -95,6 +103,31 @@ export async function PATCH(
         { status: error ? 500 : 404 }
       );
     }
+
+    // Build audit details with before/after for non-PII fields
+    const auditDetails: Record<string, unknown> = {};
+    const changedFields: string[] = [];
+
+    if (existingEntry) {
+      const oldData = existingEntry as Record<string, unknown>;
+      const newData = entry as Record<string, unknown>;
+
+      for (const key of Object.keys(parsed.data)) {
+        if (JSON.stringify(oldData[key]) !== JSON.stringify(newData[key])) {
+          changedFields.push(key);
+          if (key === 'notes') {
+            // Notes may contain sensitive client info — only log that they changed, not content
+            auditDetails[key] = { changed: true };
+          } else {
+            auditDetails[key] = { before: oldData[key] ?? null, after: newData[key] ?? null };
+          }
+        }
+      }
+    }
+
+    auditDetails.changed_fields = changedFields;
+
+    logAudit('update', 'service_entry', id, auditDetails as Record<string, import('@/types/supabase').Json | undefined>).catch(() => {});
 
     return NextResponse.json({ data: { entry: entry as DbServiceEntry } });
   } catch {
@@ -119,6 +152,18 @@ export async function DELETE(
 
     const { id } = await context.params;
 
+    // Only admins can delete service entries
+    const { data: roleData } = await supabase
+      .from('app_users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const isAdmin = roleData?.role === 'admin' || user.user_metadata?.role === 'admin';
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
+    }
+
     const { error } = await supabase
       .from('service_entries')
       .delete()
@@ -127,6 +172,8 @@ export async function DELETE(
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    logAudit('delete', 'service_entry', id).catch(() => {});
 
     return NextResponse.json({ data: { deleted: true } });
   } catch {

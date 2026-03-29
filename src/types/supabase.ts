@@ -13,7 +13,7 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      users: {
+      app_users: {
         Row: {
           id: string;
           role: 'admin' | 'staff';
@@ -85,7 +85,7 @@ export interface Database {
           {
             foreignKeyName: 'clients_created_by_fkey';
             columns: ['created_by'];
-            referencedRelation: 'users';
+            referencedRelation: 'app_users';
             referencedColumns: ['id'];
           },
         ];
@@ -132,7 +132,7 @@ export interface Database {
           {
             foreignKeyName: 'service_entries_staff_id_fkey';
             columns: ['staff_id'];
-            referencedRelation: 'users';
+            referencedRelation: 'app_users';
             referencedColumns: ['id'];
           },
         ];
@@ -169,6 +169,97 @@ export interface Database {
         Relationships: [];
       };
 
+      audit_log: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          action: string;
+          entity_type: string;
+          entity_id: string | null;
+          details: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          action: string;
+          entity_type: string;
+          entity_id?: string | null;
+          details?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string | null;
+          action?: string;
+          entity_type?: string;
+          entity_id?: string | null;
+          details?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'audit_log_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'app_users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+
+      appointments: {
+        Row: {
+          id: string;
+          client_id: string;
+          staff_id: string | null;
+          title: string;
+          scheduled_at: string;
+          duration_mins: number;
+          notes: string | null;
+          status: 'scheduled' | 'completed' | 'cancelled';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          staff_id?: string | null;
+          title: string;
+          scheduled_at: string;
+          duration_mins?: number;
+          notes?: string | null;
+          status?: 'scheduled' | 'completed' | 'cancelled';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          staff_id?: string | null;
+          title?: string;
+          scheduled_at?: string;
+          duration_mins?: number;
+          notes?: string | null;
+          status?: 'scheduled' | 'completed' | 'cancelled';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'appointments_client_id_fkey';
+            columns: ['client_id'];
+            referencedRelation: 'clients';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'appointments_staff_id_fkey';
+            columns: ['staff_id'];
+            referencedRelation: 'app_users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+
       note_embeddings: {
         Row: {
           id: string;
@@ -203,7 +294,7 @@ export interface Database {
     };
 
     Views: Record<string, never>;
-    // Note: note_embeddings.embedding is vector(512) — Voyage AI voyage-3-lite
+    // Note: note_embeddings.embedding is vector(768) — Gemini embedding-001
 
     Functions: {
       match_notes: {

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import type { DbClient, DbClientInsert } from '@/types/database';
+import { logAudit } from '@/lib/audit';
 
 const createClientSchema = z.object({
   first_name: z.string().min(1).max(100),
@@ -113,6 +114,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    logAudit('create', 'client', client.id, { action_summary: 'New client created' }).catch(() => {});
 
     return NextResponse.json({ data: { client: client as DbClient } }, { status: 201 });
   } catch {

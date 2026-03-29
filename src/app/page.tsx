@@ -1,7 +1,12 @@
 import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { LandingPage } from '@/components/landing/landing-page';
 
-// Root "/" is the dashboard home in the (dashboard) route group.
-// Redirect to /clients as the default landing page.
-export default function RootPage() {
-  redirect('/clients');
+export default async function RootPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    redirect('/dashboard');
+  }
+  return <LandingPage />;
 }

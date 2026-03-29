@@ -15,11 +15,14 @@ const updatePromptSchema = z.object({
 
 async function getAdminRole(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<boolean> {
   const { data } = await supabase
-    .from('users')
+    .from('app_users')
     .select('role')
     .eq('id', userId)
     .single();
-  return data?.role === 'admin';
+  if (data?.role === 'admin') return true;
+  // Fallback: check auth user_metadata
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.user_metadata?.role === 'admin';
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

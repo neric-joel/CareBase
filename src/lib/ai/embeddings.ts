@@ -1,68 +1,76 @@
-// Voyage AI embeddings utility.
+// Gemini embeddings utility.
 // SERVER-SIDE ONLY — never import this in Client Components.
 
-import { VoyageAIClient } from 'voyageai';
 import { createClient } from '@/lib/supabase/server';
 import type { NoteSearchResult } from '@/types/database';
 
-const voyage = new VoyageAIClient({
-  apiKey: process.env.VOYAGE_API_KEY!,
-});
-
-const EMBEDDING_MODEL = 'voyage-3-lite';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+const EMBEDDING_MODEL = 'gemini-embedding-001';
+const EMBEDDING_DIMENSIONS = 768;
 
 /**
- * Generate a 1024-dimensional embedding vector for the given text.
- * Uses Voyage AI voyage-3-lite.
- *
- * @param text      The text to embed
- * @param inputType "document" when embedding stored notes, "query" when embedding search queries
+ * Generate a 768-dimensional embedding vector for the given text.
+ * Uses Google Gemini embedding-001 with outputDimensionality=768.
  */
 export async function generateEmbedding(
   text: string,
-  inputType: 'document' | 'query' = 'document'
+  _inputType: 'document' | 'query' = 'document' // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Promise<number[]> {
   const maxRetries = 2;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await voyage.embed({
-        input: text.replace(/\n/g, ' ').trim(),
-        model: EMBEDDING_MODEL,
-        inputType,
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: `models/${EMBEDDING_MODEL}`,
+            content: { parts: [{ text: text.replace(/\n/g, ' ').trim() }] },
+            outputDimensionality: EMBEDDING_DIMENSIONS,
+          }),
+        }
+      );
 
-      const embedding = response.data?.[0]?.embedding;
-      if (!embedding) {
-        throw new Error('Voyage AI returned no embedding data');
+      if (response.status === 429) {
+        throw new Error('429 rate limit');
+      }
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`Gemini API error ${response.status}: ${errBody}`);
+      }
+
+      const data = await response.json();
+      const embedding = data?.embedding?.values;
+
+      if (!embedding || !Array.isArray(embedding)) {
+        throw new Error('Gemini returned no embedding data');
       }
 
       return embedding;
     } catch (err) {
       const isRateLimit = err instanceof Error && err.message.includes('429');
       if (isRateLimit && attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 21000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
         continue;
       }
       if (isRateLimit) {
-        throw new Error('AI search is temporarily rate-limited. Please wait ~20 seconds and try again.');
+        throw new Error('AI search is temporarily rate-limited. Please wait a moment and try again.');
       }
       throw err;
     }
   }
-  throw new Error('Voyage AI embedding failed after retries');
+  throw new Error('Gemini embedding failed after retries');
 }
 
 /**
  * Semantic search over service entry notes.
  * Embeds the query, then calls the match_notes pgvector RPC.
- *
- * @param query         Natural language search query
- * @param matchThreshold Minimum cosine similarity (0–1), default 0.3
- * @param matchCount    Max results to return, default 10
  */
 export async function searchNotes(
   query: string,
-  matchThreshold = 0.3,
+  matchThreshold = 0.0,
   matchCount = 10
 ): Promise<NoteSearchResult[]> {
   const embedding = await generateEmbedding(query, 'query');

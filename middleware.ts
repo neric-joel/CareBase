@@ -8,9 +8,10 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
 
 // Routes that do NOT require authentication
-const PUBLIC_ROUTES = ['/login', '/api/auth'];
+const PUBLIC_ROUTES = ['/login', '/pricing', '/api/auth'];
 
 function isPublicRoute(pathname: string): boolean {
+  if (pathname === '/' || pathname === '/pricing') return true;
   return PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 }
 
@@ -47,15 +48,20 @@ export async function middleware(request: NextRequest) {
 
   // IMPORTANT: getUser() must be called to refresh the session.
   // Do NOT use getSession() here — it's not safe in middleware.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // If Supabase is unreachable, treat as unauthenticated
+    user = null;
+  }
 
   // Allow public routes (login, auth callbacks) regardless of auth state
   if (isPublicRoute(pathname)) {
-    // If the user is already logged in and hits /login, redirect to /clients
+    // If the user is already logged in and hits /login, redirect to /dashboard
     if (user && pathname === '/login') {
-      return NextResponse.redirect(new URL('/clients', request.url));
+      return NextResponse.redirect(new URL('/dashboard', request.url));
     }
     return supabaseResponse;
   }

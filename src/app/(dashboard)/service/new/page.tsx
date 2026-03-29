@@ -25,6 +25,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { VoiceNoteRecorder } from '@/components/ai/voice-note-recorder';
 import { SERVICE_TYPES } from '@/types/database';
 import type { DbClient } from '@/types/database';
 
@@ -231,6 +232,35 @@ function NewServiceForm() {
                 <p className="text-destructive text-sm">{errors.service_type.message}</p>
               )}
             </div>
+
+            <VoiceNoteRecorder
+              clientName={
+                watchedClientId
+                  ? clients.find((c) => c.id === watchedClientId)
+                    ? `${clients.find((c) => c.id === watchedClientId)!.first_name} ${clients.find((c) => c.id === watchedClientId)!.last_name}`
+                    : undefined
+                  : undefined
+              }
+              onStructured={(note) => {
+                if (note.full_note) {
+                  setValue('notes', note.full_note, { shouldValidate: true });
+                }
+                if (note.service_type) {
+                  const matched = SERVICE_TYPES.find(
+                    (t) => t.toLowerCase() === note.service_type!.toLowerCase()
+                  );
+                  if (matched) {
+                    setValue('service_type', matched as ServiceFormValues['service_type'], { shouldValidate: true });
+                  }
+                }
+                toast({
+                  title: 'Voice note structured',
+                  description: note.summary
+                    ? `${note.summary.slice(0, 100)}${note.summary.length > 100 ? '…' : ''}`
+                    : 'Fields populated from your voice recording.',
+                });
+              }}
+            />
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>

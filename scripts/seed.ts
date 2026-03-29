@@ -83,9 +83,9 @@ async function seed() {
     console.log('  Staff user created:', staffId);
   }
 
-  // Upsert into public.users
+  // Upsert into public.app_users
   const { error: usersUpsertError } = await supabase
-    .from('users')
+    .from('app_users')
     .upsert(
       [
         { id: adminId, role: 'admin' as const, full_name: 'Alex Rivera' },
@@ -95,9 +95,9 @@ async function seed() {
     );
 
   if (usersUpsertError) {
-    throw new Error(`Failed to upsert public.users: ${usersUpsertError.message}`);
+    throw new Error(`Failed to upsert public.app_users: ${usersUpsertError.message}`);
   }
-  console.log('  public.users upserted.');
+  console.log('  public.app_users upserted.');
 
   // ─────────────────────────────────────────────────────────────────
   // STEP 2: Clean existing client data (idempotent)

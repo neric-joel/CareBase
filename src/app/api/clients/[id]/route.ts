@@ -8,6 +8,7 @@ import type {
   DbUser,
   ServiceEntryWithStaff,
 } from '@/types/database';
+import { logAudit } from '@/lib/audit';
 
 const updateClientSchema = z.object({
   first_name: z.string().min(1).max(100).optional(),
@@ -76,18 +77,16 @@ export async function GET(
     let staffMap: Map<string, DbUser> = new Map();
 
     if (staffIds.length > 0) {
-      const { data: staffRows, error: staffError } = await supabase
-        .from('users')
+      const { data: staffRows } = await supabase
+        .from('app_users')
         .select('id, full_name, role, created_at, updated_at')
         .in('id', staffIds);
 
-      if (staffError) {
-        return NextResponse.json({ error: staffError.message }, { status: 500 });
+      if (staffRows) {
+        staffMap = new Map(
+          (staffRows as DbUser[]).map((s) => [s.id, s])
+        );
       }
-
-      staffMap = new Map(
-        (staffRows as DbUser[]).map((s) => [s.id, s])
-      );
     }
 
     const serviceEntries: ServiceEntryWithStaff[] = rawEntries.map((entry) => ({
@@ -138,6 +137,13 @@ export async function PATCH(
       updated_at: new Date().toISOString(),
     };
 
+    // Fetch current client data before update for audit trail
+    const { data: existingClient } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', id)
+      .single();
+
     const { data: client, error } = await supabase
       .from('clients')
       .update(updateData)
@@ -148,6 +154,43 @@ export async function PATCH(
     if (error || !client) {
       return NextResponse.json({ error: error?.message ?? 'Client not found' }, { status: error ? 500 : 404 });
     }
+
+    // Build audit details: track changed fields, but exclude PII values
+    const PII_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'date_of_birth', 'address'];
+    const auditDetails: Record<string, unknown> = {};
+    const changedFields: string[] = [];
+
+    if (existingClient) {
+      const oldData = existingClient as Record<string, unknown>;
+      const newData = client as Record<string, unknown>;
+
+      for (const key of Object.keys(parsed.data)) {
+        if (key === 'custom_fields') {
+          const oldCf = (oldData.custom_fields ?? {}) as Record<string, unknown>;
+          const newCf = (newData.custom_fields ?? {}) as Record<string, unknown>;
+          const cfChanges: Record<string, { before: unknown; after: unknown }> = {};
+          const allCfKeys = new Set([...Object.keys(oldCf), ...Object.keys(newCf)]);
+          for (const cfKey of allCfKeys) {
+            if (JSON.stringify(oldCf[cfKey]) !== JSON.stringify(newCf[cfKey])) {
+              cfChanges[cfKey] = { before: oldCf[cfKey] ?? null, after: newCf[cfKey] ?? null };
+            }
+          }
+          if (Object.keys(cfChanges).length > 0) {
+            changedFields.push('custom_fields');
+            auditDetails.custom_fields_changes = cfChanges;
+          }
+        } else if (JSON.stringify(oldData[key]) !== JSON.stringify(newData[key])) {
+          changedFields.push(key);
+          if (!PII_FIELDS.includes(key)) {
+            auditDetails[key] = { before: oldData[key] ?? null, after: newData[key] ?? null };
+          }
+        }
+      }
+    }
+
+    auditDetails.changed_fields = changedFields;
+
+    logAudit('update', 'client', id, auditDetails as Record<string, import('@/types/supabase').Json | undefined>).catch(() => {});
 
     return NextResponse.json({ data: { client: client as DbClient } });
   } catch {
@@ -171,12 +214,13 @@ export async function DELETE(
     }
 
     const { data: roleData } = await supabase
-      .from('users')
+      .from('app_users')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (roleData?.role !== 'admin') {
+    const isAdmin = roleData?.role === 'admin' || user.user_metadata?.role === 'admin';
+    if (!isAdmin) {
       return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
     }
 
@@ -190,6 +234,8 @@ export async function DELETE(
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    logAudit('delete', 'client', id).catch(() => {});
 
     return NextResponse.json({ data: { deleted: true } });
   } catch {

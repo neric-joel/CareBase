@@ -7,24 +7,43 @@ import {
   Users,
   ClipboardPlus,
   Search,
+  Settings,
+  Calendar,
+  Shield,
   Heart,
   Menu,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { createClient } from '@/lib/supabase/client';
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  isAI?: boolean;
+  adminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/clients', label: 'Clients', icon: Users },
   { href: '/service/new', label: 'Log Service', icon: ClipboardPlus },
+  { href: '/calendar', label: 'Calendar', icon: Calendar },
   { href: '/search', label: 'AI Search', icon: Search, isAI: true },
-] as const;
+  { href: '/admin', label: 'Admin', icon: Settings, adminOnly: true },
+  { href: '/audit', label: 'Audit Log', icon: Shield, adminOnly: true },
+];
 
-function NavContent({ onClose }: { onClose?: () => void }) {
+function NavContent({ onClose, userRole }: { onClose?: () => void; userRole: string | null }) {
   const pathname = usePathname();
+
+  const visibleItems = navItems.filter(
+    (item) => !item.adminOnly || userRole === 'admin'
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -45,7 +64,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2" aria-label="Main navigation">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive =
             item.href === '/dashboard'
               ? pathname === '/dashboard'
@@ -67,7 +86,7 @@ function NavContent({ onClose }: { onClose?: () => void }) {
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{item.label}</span>
-              {'isAI' in item && item.isAI && (
+              {item.isAI && (
                 <Badge className="ml-auto bg-accent text-accent-foreground text-xs px-1.5 py-0">
                   AI
                 </Badge>
@@ -76,12 +95,42 @@ function NavContent({ onClose }: { onClose?: () => void }) {
           );
         })}
       </nav>
+
+      {userRole && (
+        <div className="px-4 py-3 border-t text-xs text-muted-foreground">
+          Role: <span className="font-medium capitalize">{userRole}</span>
+        </div>
+      )}
     </div>
   );
 }
 
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchRole() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('app_users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      if (data?.role) {
+        setUserRole(data.role);
+      } else {
+        // Fallback: read role from auth user_metadata (set during signup/seed)
+        const metaRole = user.user_metadata?.role;
+        if (metaRole === 'admin' || metaRole === 'staff') {
+          setUserRole(metaRole);
+        }
+      }
+    }
+    fetchRole();
+  }, []);
 
   return (
     <>
@@ -113,7 +162,7 @@ export function Sidebar() {
         )}
         aria-label="Sidebar navigation"
       >
-        <NavContent onClose={() => setIsOpen(false)} />
+        <NavContent onClose={() => setIsOpen(false)} userRole={userRole} />
       </aside>
 
       {/* Desktop sidebar */}
@@ -121,7 +170,7 @@ export function Sidebar() {
         className="hidden md:flex md:w-64 md:flex-col md:border-r md:bg-card"
         aria-label="Sidebar navigation"
       >
-        <NavContent />
+        <NavContent userRole={userRole} />
       </aside>
     </>
   );

@@ -17,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;     -- fuzzy text search on client names
 -- ============================================================
 
 -- users — extends auth.users with role and display name.
-CREATE TABLE IF NOT EXISTS public.users (
+CREATE TABLE IF NOT EXISTS public.app_users (
   id          uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   role        text NOT NULL DEFAULT 'staff'
               CHECK (role IN ('admin', 'staff')),
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE public.users IS
+COMMENT ON TABLE public.app_users IS
   'Application user profiles extending auth.users. Role controls CRUD permissions.';
 
 -- clients — the people receiving services from the nonprofit.
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.clients (
   email           text,
   address         text,
   custom_fields   jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_by      uuid REFERENCES public.users(id) ON DELETE SET NULL,
+  created_by      uuid REFERENCES public.app_users(id) ON DELETE SET NULL,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS public.service_entries (
   client_id       uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
   service_date    date NOT NULL,
   service_type    text NOT NULL,
-  staff_id        uuid REFERENCES public.users(id) ON DELETE SET NULL,
+  staff_id        uuid REFERENCES public.app_users(id) ON DELETE SET NULL,
   notes           text,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
@@ -79,24 +79,24 @@ CREATE TABLE IF NOT EXISTS public.prompts (
 COMMENT ON TABLE public.prompts IS
   'System prompts for AI features. Admins can edit via /api/prompts. name is stable identifier.';
 
--- note_embeddings — Voyage AI voyage-3-lite vectors for Semantic Search.
+-- note_embeddings — Gemini embedding-001 vectors for Semantic Search.
 CREATE TABLE IF NOT EXISTS public.note_embeddings (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   service_entry_id    uuid UNIQUE NOT NULL
                       REFERENCES public.service_entries(id) ON DELETE CASCADE,
-  embedding           vector(512) NOT NULL,
+  embedding           vector(768) NOT NULL,
   content             text NOT NULL,
   created_at          timestamptz NOT NULL DEFAULT now()
 );
 
 COMMENT ON TABLE public.note_embeddings IS
-  'Vector embeddings (voyage-3-lite, 512 dims) for semantic note search via pgvector.';
+  'Vector embeddings (Gemini embedding-001, 768 dims) for semantic note search via pgvector.';
 
 -- ============================================================
 -- 3. HELPER FUNCTIONS
 -- ============================================================
 
--- Returns the current authenticated user's role from public.users.
+-- Returns the current authenticated user's role from public.app_users.
 -- Used in RLS policies. SECURITY DEFINER so it can read users table.
 CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS text
@@ -105,7 +105,7 @@ SECURITY DEFINER
 STABLE
 SET search_path = public
 AS $$
-  SELECT role FROM public.users WHERE id = auth.uid();
+  SELECT role FROM public.app_users WHERE id = auth.uid();
 $$;
 
 -- Sets updated_at to now() on every UPDATE.
@@ -160,7 +160,7 @@ END;
 $$;
 
 -- Handles new Supabase Auth user signup:
--- inserts a corresponding row into public.users.
+-- inserts a corresponding row into public.app_users.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -168,7 +168,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.users (id, full_name, role)
+  INSERT INTO public.app_users (id, full_name, role)
   VALUES (
     NEW.id,
     COALESCE(
@@ -187,7 +187,7 @@ $$;
 
 -- match_notes — cosine similarity search over note_embeddings.
 CREATE OR REPLACE FUNCTION public.match_notes(
-  query_embedding  vector(512),
+  query_embedding  vector(768),
   match_threshold  float    DEFAULT 0.5,
   match_count      integer  DEFAULT 10
 )
@@ -237,7 +237,7 @@ CREATE TRIGGER trg_clients_set_client_id
 
 -- updated_at maintenance
 CREATE TRIGGER trg_users_updated_at
-  BEFORE UPDATE ON public.users
+  BEFORE UPDATE ON public.app_users
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 CREATE TRIGGER trg_clients_updated_at
@@ -252,7 +252,7 @@ CREATE TRIGGER trg_prompts_updated_at
   BEFORE UPDATE ON public.prompts
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
--- Auto-create public.users row when a new auth user signs up
+-- Auto-create public.app_users row when a new auth user signs up
 CREATE OR REPLACE TRIGGER trg_on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -261,7 +261,7 @@ CREATE OR REPLACE TRIGGER trg_on_auth_user_created
 -- 5. ROW LEVEL SECURITY
 -- ============================================================
 
-ALTER TABLE public.users           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_users           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.prompts         ENABLE ROW LEVEL SECURITY;
@@ -270,27 +270,27 @@ ALTER TABLE public.note_embeddings ENABLE ROW LEVEL SECURITY;
 -- ---- users ----
 
 CREATE POLICY "users: read own"
-  ON public.users FOR SELECT
+  ON public.app_users FOR SELECT
   USING (auth.uid() = id);
 
 CREATE POLICY "users: admin read all"
-  ON public.users FOR SELECT
+  ON public.app_users FOR SELECT
   USING (public.get_user_role() = 'admin');
 
 CREATE POLICY "users: update own"
-  ON public.users FOR UPDATE
+  ON public.app_users FOR UPDATE
   USING (auth.uid() = id);
 
 CREATE POLICY "users: admin update all"
-  ON public.users FOR UPDATE
+  ON public.app_users FOR UPDATE
   USING (public.get_user_role() = 'admin');
 
 CREATE POLICY "users: admin delete"
-  ON public.users FOR DELETE
+  ON public.app_users FOR DELETE
   USING (public.get_user_role() = 'admin');
 
 CREATE POLICY "users: allow insert"
-  ON public.users FOR INSERT
+  ON public.app_users FOR INSERT
   WITH CHECK (true);
 
 -- ---- clients ----

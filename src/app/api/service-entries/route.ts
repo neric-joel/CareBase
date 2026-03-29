@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import type { DbServiceEntry, DbServiceEntryInsert } from '@/types/database';
+import { logAudit } from '@/lib/audit';
 import { SERVICE_TYPES } from '@/types/database';
 
 const createEntrySchema = z.object({
@@ -92,6 +93,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    logAudit('create', 'service_entry', entry.id, {
+      service_type: parsed.data.service_type,
+      service_date: parsed.data.service_date,
+    }).catch(() => {});
 
     return NextResponse.json({ data: { entry: entry as DbServiceEntry } }, { status: 201 });
   } catch {

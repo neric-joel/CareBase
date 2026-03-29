@@ -2,7 +2,6 @@ import { config } from 'dotenv';
 config({ path: '.env.local' });
 
 import { createClient } from '@supabase/supabase-js';
-import { VoyageAIClient } from 'voyageai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,16 +9,41 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const voyage = new VoyageAIClient({
-  apiKey: process.env.VOYAGE_API_KEY!,
-});
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+const EMBEDDING_MODEL = 'gemini-embedding-001';
+const EMBEDDING_DIMENSIONS = 768;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function embedText(text: string): Promise<number[]> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: `models/${EMBEDDING_MODEL}`,
+        content: { parts: [{ text: text.replace(/\n/g, ' ').trim() }] },
+        outputDimensionality: EMBEDDING_DIMENSIONS,
+      }),
+    }
+  );
+
+  if (response.status === 429) {
+    throw new Error('429 rate limit');
+  }
+
+  if (!response.ok) {
+    throw new Error(`Gemini API error ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  return data.embedding.values;
+}
+
 async function embedAllNotes() {
-  // Step 1: Fetch all entries with notes
   console.log('Fetching service entries with notes...');
   const { data: entries, error } = await supabase
     .from('service_entries')
@@ -36,77 +60,50 @@ async function embedAllNotes() {
     return;
   }
 
-  console.log(`Found ${entries.length} entries. Embedding in 3 batches (3 RPM limit)...\n`);
+  console.log(`Found ${entries.length} entries. Embedding one at a time...\n`);
 
   let success = 0;
   let failed = 0;
 
-  // Batch into groups of 12-13 (3 batches for 36 entries = 1 API call each)
-  const BATCH_SIZE = 13;
-  const batches: typeof entries[] = [];
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-    batches.push(entries.slice(i, i + BATCH_SIZE));
-  }
-
-  for (let b = 0; b < batches.length; b++) {
-    const batch = batches[b];
-    const texts = batch.map((e) => (e.notes as string).replace(/\n/g, ' ').trim());
-
-    console.log(`Batch ${b + 1}/${batches.length} (${batch.length} entries)...`);
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    console.log(`[${i + 1}/${entries.length}] Entry ${entry.id}...`);
 
     try {
-      const response = await voyage.embed({
-        input: texts,
-        model: 'voyage-3-lite',
-        inputType: 'document',
-      });
+      const embedding = await embedText(entry.notes as string);
 
-      for (let j = 0; j < batch.length; j++) {
-        const entry = batch[j];
-        const embedding = response.data?.[j]?.embedding;
+      const { error: upsertError } = await supabase
+        .from('note_embeddings')
+        .upsert(
+          {
+            service_entry_id: entry.id,
+            embedding,
+            content: entry.notes as string,
+          },
+          { onConflict: 'service_entry_id' }
+        );
 
-        if (!embedding) {
-          console.log(`  [SKIP] No embedding for entry ${entry.id}`);
-          failed++;
-          continue;
-        }
-
-        const { error: upsertError } = await supabase
-          .from('note_embeddings')
-          .upsert(
-            {
-              service_entry_id: entry.id,
-              embedding,
-              content: entry.notes as string,
-            },
-            { onConflict: 'service_entry_id' }
-          );
-
-        if (upsertError) {
-          console.log(`  [ERR] ${entry.id}: ${upsertError.message}`);
-          failed++;
-        } else {
-          success++;
-        }
+      if (upsertError) {
+        console.log(`  [ERR] ${upsertError.message}`);
+        failed++;
+      } else {
+        success++;
       }
-
-      console.log(`  Done — ${success} total embedded so far.`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown';
       if (msg.includes('429')) {
-        console.log(`  Rate limited — waiting 25s and retrying...`);
-        await sleep(25000);
-        b--; // retry this batch
+        console.log('  Rate limited — waiting 5s and retrying...');
+        await sleep(5000);
+        i--; // retry
         continue;
       }
-      console.log(`  [ERR] Batch failed: ${msg}`);
-      failed += batch.length;
+      console.log(`  [ERR] ${msg}`);
+      failed++;
     }
 
-    // Wait 21s between batches to stay under 3 RPM
-    if (b < batches.length - 1) {
-      console.log('  Waiting 21s for rate limit...');
-      await sleep(21000);
+    // Small delay between requests
+    if (i < entries.length - 1) {
+      await sleep(200);
     }
   }
 

@@ -5,17 +5,20 @@ import type { Database } from './supabase';
 
 // ---- Row types (what you get back from SELECT) ----
 
-export type DbUser = Database['public']['Tables']['users']['Row'];
+export type DbUser = Database['public']['Tables']['app_users']['Row'];
 export type DbClient = Database['public']['Tables']['clients']['Row'];
 export type DbServiceEntry =
   Database['public']['Tables']['service_entries']['Row'];
 export type DbPrompt = Database['public']['Tables']['prompts']['Row'];
 export type DbNoteEmbedding =
   Database['public']['Tables']['note_embeddings']['Row'];
+export type DbAuditLog = Database['public']['Tables']['audit_log']['Row'];
+export type DbAppointment = Database['public']['Tables']['appointments']['Row'];
+export type DbAppointmentInsert = Database['public']['Tables']['appointments']['Insert'];
 
 // ---- Insert types (what you send for INSERT) ----
 
-export type DbUserInsert = Database['public']['Tables']['users']['Insert'];
+export type DbUserInsert = Database['public']['Tables']['app_users']['Insert'];
 export type DbClientInsert = Database['public']['Tables']['clients']['Insert'];
 export type DbServiceEntryInsert =
   Database['public']['Tables']['service_entries']['Insert'];

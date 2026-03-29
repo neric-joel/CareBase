@@ -19,11 +19,11 @@ import {
 import type { NoteSearchResult } from '@/types/database';
 
 const EXAMPLE_QUERIES = [
-  'clients facing eviction or housing instability',
-  'families with young children or toddlers',
-  'clients with diabetes or dietary restrictions',
-  'people who need employment assistance',
-  'clients stabilizing after a crisis',
+  'Which families are at risk of eviction or struggling with housing?',
+  'Are there any veterans on a fixed income who need benefits help?',
+  'Who has had a workplace injury or needs workers compensation?',
+  'Which clients need halal or gluten-free food options?',
+  'Families with children who need diapers or clothing assistance',
 ];
 
 export function SemanticSearch() {
